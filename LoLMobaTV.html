@@ -1,0 +1,68 @@
+<html style="height: 100%; width:100%;position:absolute;overflow:hidden">
+<title>MobaFire</title>
+  <head>
+     <script src="http://code.jquery.com/jquery-1.11.2.min.js" type="text/javascript"></script>
+     <script src="LoLTickerSource.js" type="text/javascript"></script>
+     <link rel="stylesheet" type="text/css" href="LoLStyle.css">
+     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
+
+     <!-- Optional theme -->
+     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap-theme.min.css">
+
+     <!-- Latest compiled and minified JavaScript -->
+     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script>  
+<script type='text/javascript'>
+//websocket
+var ws;
+//websocket IP
+var wsIP;
+function init() {  
+  wsIP = getParameterByName("socketID"); //54.213.84.192:8888 
+    if (wsIP == "")
+      wsIP = "54.213.84.192:8888";
+  ws = new WebSocket("ws://" + wsIP + "/ws");
+  ws.onopen = function() {
+    chatReady();
+  }
+  ws.onmessage = function (evt) {
+    console.log(evt.data);
+    if (evt.data.indexOf("RCLoadMoba") > -1){
+            var datastring = evt.data;
+              var id = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+              var champ = $.grep(lolChampions, function(e){ return e.element == id; });
+              document.getElementById("mobaFrame").src = champ[0].mobaURL;
+    }
+    if (evt.data.indexOf("RCSetChatScroll") > -1){
+      var datastring = evt.data;
+        var h = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+         $('#mobaFrame').contents().scrollTop(h);
+    }
+    if (evt.data.indexOf("RCSetMobaWidth") > -1){
+      var datastring = evt.data;
+        var w = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+         $('#mobaFrame').contents().scrollLeft(w);
+    }
+    if (evt.data.indexOf("PingChatTV") > -1){
+        chatReady();
+    }
+  }
+}
+function chatReady(){
+    var msg="broadcast:ChatReady";
+    ws.send(msg);
+}
+function getParameterByName(name) {
+    name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+    var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+        results = regex.exec(location.search);
+    return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+</script>   
+  </head>
+  <body onload="init()">
+    <div id="container" style="padding-bottom: 0px !important;height: 103%;width: 103%;">
+      <iframe id="mobaFrame"></iframe>
+    </div>
+  </body>
+</html>

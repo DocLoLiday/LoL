@@ -1,0 +1,107 @@
+  <!DOCTYPE html>
+  <html id="html-ticker" style="overflow:hidden;">
+  <title>LoL Ticker</title>
+
+  <head>
+   <script src="http://code.jquery.com/jquery-1.11.2.min.js" type="text/javascript"></script>
+   <script src="LoLTickerSource.js" type="text/javascript"></script>
+   <link rel="stylesheet" type="text/css" href="LoLStyle.css">
+   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
+
+   <!-- Optional theme -->
+   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap-theme.min.css">
+
+   <!-- Latest compiled and minified JavaScript -->
+   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script> 
+   <script type='text/javascript'>
+        
+        
+        
+
+   //websocket
+   var ws;
+   //array of channels
+   var channels;
+   //array of streams
+   var streams;
+   //websocket ip
+   var wsIP;
+
+   function init() {
+     console.log("Start Init: ");
+     token = 0;
+    
+     wsIP = getParameterByName("socketID"); //54.213.84.192:8888 
+    if (wsIP == "")
+      wsIP = "54.213.84.192:8888";
+    ws = new WebSocket("ws://" + wsIP + "/ws");
+    loadTicker();
+     ws.onopen = function() {
+              // ws.send("Hello, world");
+            tickerReady();
+            }
+     ws.onmessage = function (evt) {
+         // alert(evt.data);  // popup dialog                 
+         console.log("message: " + evt.data);
+         //sets mode for case statement. Will handle this better in the future. Now reads broadcast and if broadcast contains mode title, switches mode
+         var mode = "";
+         if (evt.data.indexOf("RCSetScroll") > -1){
+            var datastring = evt.data;
+            var h = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+            $('#sb1 div').scrollLeft(h);
+            var scrollPos =$("#channels").scrollLeft();
+            var scrollW = document.getElementById("channels").scrollWidth;
+            if (scrollW - scrollPos < 1500){
+              loadTicker();
+            }
+            console.log($('#sb1 div').scrollLeft());
+         }
+          if (evt.data.indexOf("RCZoomTicker") > -1){
+            var datastring = evt.data;
+            var fontSize = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+            $(".info").css({'font-size':fontSize});
+          }
+          if (evt.data.indexOf("PingTicker") > -1){
+            tickerReady();
+          }
+       }
+
+     }
+  function loadTicker(){
+    var out = "";
+    for(i = 0; i < lolChampions.length; i++) {
+    var div = document.createElement('div');
+    div.id = lolChampions[i].element;
+    div.onclick = function(){ launchApp(this.id) };
+    div.className = "channel channel-ticker";
+    div.innerHTML = '<img src="'+ lolChampions[i].image + '" style="padding-top:20px;">';
+    document.getElementById("channels").appendChild(div);
+    }
+ }
+    function getParameterByName(name) {
+    name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+    var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+        results = regex.exec(location.search);
+    return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+    function tickerReady(){
+      var msg="broadcast:TickerReady";
+      ws.send(msg);
+    }
+   </script>
+  </head>
+  <body onload="init()">
+    <div id="channel">
+      <div id="video-sidebar channel-list-tv" class="video-sidebar channel-list-tv-ticker"> 
+      <div id="left-button" class="glyphicon glyphicon-th">
+      </div>        
+        <div class="sidebar-content sidebar-addition-ticker-tv" id="sb1"> 
+          <div id="channels" style="overflow-y: hidden;margin-left: 127px;">      
+          </div>
+          <div id="icon-advertisment" class="">
+          </div>   
+        </div>              
+      </div>
+    </div>     
+  </body>
+</html>

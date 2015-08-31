@@ -1,0 +1,537 @@
+  <!DOCTYPE html>
+  <html id="html-ticker" style="width:480px; height:320px;">
+  <title>Skreens Ticker Mobile</title>
+
+  <head>
+   <script src="http://code.jquery.com/jquery-1.11.2.min.js" type="text/javascript"></script>
+   <link rel="stylesheet" type="text/css" href="AppStyle.css">
+   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
+
+   <!-- Optional theme -->
+   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap-theme.min.css">
+
+   <!-- Latest compiled and minified JavaScript -->
+   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script> 
+   <script type='text/javascript'>
+//websocket
+var ws;
+//IP address for WebSocket. This will come from the device in production.
+var wsIP;
+//Video Base URL
+var videoURL;
+//Chat Base URL
+var chatURL;
+//Ticker base URL
+var tickerURL;
+//array of channels
+var channels;
+//array of streams
+var streams;
+//current video stream
+var videochannel;
+//keeps track of spawned video window *********TESTING, REMOVE FOR PRODUCTION***********
+var myVideoWindow;
+//keeps track of spawned chat window *********TESTING, REMOVE FOR PRODUCTION***********
+var myChatWindow;
+//message counter for id-ing divs
+var msgCount;
+//hard-coded dummy chat messages to simulate cool kids online
+var msgArr;
+//current chat message position. Must not exceed 20
+var arrPos;
+//sets chat message delay
+var delay=parseInt(getParameterByName("delay"));
+//Determines wether working locally or in Skreens environment. Defaults to Skreens
+var local=false;
+//lets you know if AppTV is open
+var AppTVReady=false;
+//lets you know if ChatTV is open
+var ChatTVReady=false;
+//Fires on load page
+function init() { 
+    if (isNaN(delay))
+      delay = 10000;
+    wsIP = getParameterByName("socketID"); //54.213.84.192:8888 
+    if (wsIP == "")
+      wsIP = "54.213.84.192:8888";
+    console.log("socket ID - " + wsIP); 
+    ws = new WebSocket("ws://" + wsIP + "/ws");
+    videoURL = "/MLG/AppTV.html?socketID=" + wsIP;  // MT added MLG directory
+    chatURL = "/MLG/ChatTV.html?socketID=" + wsIP;
+    tickerURL = "/MLG/AppTicker.html?socketID=" + wsIP;
+    videochannel = "";
+    msgCount = 0;
+    msgArr = [];
+    channels = [];
+    streams = [];
+    arrPos = 0;
+    local = getParameterByName("local");
+    // if((navigator.userAgent.match(/iPhone/i)) || (navigator.userAgent.match(/iPod/i))) {
+    //   if (local == false){
+    //     window.location = "http:www.skreenstv.com/apps/MLG/AppRCMobile.html?socketID=" + wsIP;
+    //   }
+    //   else{
+    //     window.location = "/MLG/AppRC.html?socketID=" + wsIP;
+    //   }
+    // }
+    ////loadMsgArr("DEFAULT");
+    // var xmlhttp = new XMLHttpRequest();
+    // var url = 'http://www.majorleaguegaming.com/api/channels/all?fields=id,name,embed_code,subtitle,image_16_9_small'
+
+
+    // xmlhttp.open("GET", url, true);
+    // xmlhttp.send();
+    // function myFunction(response) {
+    //     var arr = JSON.parse(response);
+    //     //Creates an array of channels from the API
+    //   channels = arr.data.items;
+    //    //console.log(channels);
+    // }
+    // xmlhttp.onreadystatechange=function() {
+    //     if (xmlhttp .readyState == 4 && xmlhttp.status == 200) {
+    //         myFunction(xmlhttp.responseText);
+    //         loadStreams();
+    //     }
+    // }
+       ws.onopen = function() {
+           // ws.send("Hello, world");
+          var msg="broadcast:RCRequestAPI";
+          ws.send(msg);
+          setTimeout(function() {
+            if(channels.length == 0){
+              if (local==false){
+                createWindow(tickerURL);
+              }
+              else{
+               window.open(tickerURL); // MT removed becasue too hard in Skreens Env
+              }            
+            }
+          }, 1500);
+       }
+       ws.onmessage = function (evt) {
+     // alert(evt.data);  // popup dialog
+        console.log("message: " + evt.data); 
+          if (evt.data.indexOf("VideoReady") > -1){
+            AppTVReady=true;
+            if(videochannel != ""){
+                loadVideo(videochannel[0].id);
+              }
+          }
+          if (evt.data.indexOf("ChatReady") > -1){
+            ChatTVReady=true;
+            if(videochannel != ""){
+                loadChat(videochannel[0].name);
+              }
+          }
+          if (evt.data.indexOf("RCSendChat") > -1){
+            var datastring = evt.data;
+              var chatText = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+              createDiv();
+              document.getElementById("msg_" + msgCount).innerHTML = "<b style=color:Navy;>SkreensDemo:</b> " + chatText;
+              anchorChatBot();
+          }
+          if (evt.data.indexOf("RCLoadMsg") > -1){
+            addMsg();
+          }
+          if (evt.data.indexOf("RCLoadChat") > -1){
+            var datastring = evt.data;
+              var channelName = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+              loadMsgArr(channelName);
+              document.getElementById("mobileChatLabel").innerHTML = channelName;
+          }
+          if (evt.data.indexOf("TVSendChannels") > -1){
+            var datastring = evt.data;
+              var response = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+              var arr = JSON.parse(response);
+              //Creates an array of channels from the API
+              channels.push(arr);
+          }
+          if (evt.data.indexOf("TVSendStreams") > -1){
+            var datastring = evt.data;
+              var response = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+              var arr = JSON.parse(response);
+              //Creates an array of channels from the API
+              streams.push(arr);
+          }
+          if (evt.data.indexOf("TVTickerReady") > -1){
+            loadTicker();
+          }
+          if (evt.data.indexOf("RCZoomTicker") > -1){
+            var datastring = evt.data;
+            var fontSize = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+            $(".info").css({'font-size':fontSize});
+          }
+          if (evt.data.indexOf("RCZoomChat") > -1){
+            var datastring = evt.data;
+            var fontSizeChat = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+            $("#messages").css({'font-size':fontSizeChat});
+          }
+         //  if (evt.data.indexOf("RCSetScroll") > -1){
+         //    var datastring = evt.data;
+         //    var h = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+         //    $('#sb1 div').scrollLeft(h);
+         //    console.log($('#sb1 div').scrollLeft());
+         // }
+       }
+    // window.setInterval(function(){
+    //   loadMsg();
+    // }, delay);
+ }
+ function loadTicker(){
+    var out = "";
+    for(i = 0; i < streams.length; i++) {
+      var channel = $.grep(channels, function(e){ return e.id == streams[i].channel_id; });
+      out += '<div id="'+ channel[0].id + '" class="channel channel-ticker" title="'+ channel[0].name + '" onclick="launchApp(this.id)"><div class="avatar"><img src="'+ channel[0].image_16_9_small + '"></div><div class="info"><p class="title">'+ channel[0].name + '</p><p class="subtitle">'+ channel[0].subtitle + '</p></div></div>'; //<div class="status live" title="LIVE"></div>
+    }
+    document.getElementById("channels").innerHTML = out;
+ }
+function getParameterByName(name) {
+    name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+    var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+        results = regex.exec(location.search);
+    return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+function launchApp(id){
+  AppTVReady=false;
+  ChatTVReady=false;
+  var msg="broadcast:PingAppTV";
+  ws.send(msg);
+  var msg="broadcast:PingChatTV";
+  ws.send(msg);
+  selectVideoChannel(id);
+  setTimeout(function() {
+    if (local == false){
+      if(AppTVReady==false)
+        createWindow(videoURL);
+      if(ChatTVReady==false)
+        createWindow(chatURL);
+    }
+    else{
+      if(AppTVReady==false)
+        myVideoWindow = window.open(videoURL);   // MT removed
+      if(ChatTVReady==false)
+        myChatWindow = window.open(chatURL);     // MT removed
+    }  
+              
+          }, 1500);
+    
+    loadVideo(id);
+    loadChat(videochannel[0].name);
+}
+function selectVideoChannel(id){
+  videochannel = $.grep(channels, function(e){ return e.id == id; });
+      //formats the embed code if the embed code has not already been formatted this session
+      if (videochannel[0].embed_code.indexOf("http:") == -1){
+        videochannel[0].embed_code = videochannel[0].embed_code.replace(/&quot;/g,"");
+        videochannel[0].embed_code = videochannel[0].embed_code.replace('/player/','http://www.majorleaguegaming.com/player/');
+        videochannel[0].embed_code = videochannel[0].embed_code.replace('" scrolling','?enablejsapi=1" id ="currentvid" scrolling');
+      }
+}
+function loadVideo(id){
+  var msg="broadcast:RCLoadVideo?id=" + id;
+  ws.send(msg);
+}
+function loadChat(name){
+  var fontSizeChat = parseInt($("#messages").css("font-size"));
+  var msg="broadcast:RCZoomChat?size=" + fontSizeChat;
+  ws.send(msg);
+  var msg2="broadcast:RCLoadChat?name=" + name;
+  ws.send(msg2);
+}
+function playVideo(){
+  var msg="broadcast:RCPausePlay?play=true";
+  ws.send(msg);
+}
+function pauseVideo(){
+  var msg="broadcast:RCPausePlay?play=false";
+  ws.send(msg);
+}
+function loadMsg(){
+  var msg="broadcast:RCLoadMsg";
+  ws.send(msg);
+}
+function sendChat(){
+  var text = document.getElementById("exampleInputEmail1").value;
+  var msg="broadcast:RCSendChat?text=" + text;
+  ws.send(msg);
+  document.getElementById("exampleInputEmail1").value ="";
+}
+function closeApp(){
+  var msg="broadcast:RCCloseVideo";
+  if (local == false){
+    destroyWindow(1); //destroys Video Window
+    destroyWindow(2); //destroys Chat Window
+  }
+  else{
+    myVideoWindow.close();  // MT removed
+    myChatWindow.close();   // MT removed
+  }
+  
+  videochannel = "";
+  clearChat();
+  ws.send(msg);
+}
+   // function loadStreams(){
+   //  var xmlhttp2 = new XMLHttpRequest();
+   //  var url = 'http://streamapi.majorleaguegaming.com/service/streams/all?status=1,2'
+   //  xmlhttp2.open("GET", url, true);
+   //  xmlhttp2.send();
+   //  function myFunction2(response) {
+   //      var arr = JSON.parse(response);
+   //      //Creates an array of live streams from the API
+   //    streams = arr.data.items;
+   //    //Dynamically builds list of live channels displaying Avatar, Name, Subtitle --****THIS CAN BE DONE BETTER**********
+   //     var out = "";
+   //      for(i = 0; i < streams.length; i++) {
+   //          var channel = $.grep(channels, function(e){ return e.id == streams[i].channel_id; });
+
+   //          out += '<div id="'+ channel[0].id + '" class="channel channel-ticker" title="'+ channel[0].name + '" onclick="launchApp(this.id)"><div class="avatar"><img src="'+ channel[0].image_16_9_small + '"></div><div class="info"><p class="title">'+ channel[0].name + '</p><p class="subtitle">'+ channel[0].subtitle + '</p></div><div class="status live" title="LIVE"></div></div>';
+   //      }
+   //      document.getElementById("channels").innerHTML = out;
+   //  }
+   //  xmlhttp2.onreadystatechange=function() {
+   //      if (xmlhttp2 .readyState == 4 && xmlhttp2.status == 200) {
+   //          myFunction2(xmlhttp2.responseText);
+   //      }
+   //  }
+   // }
+$(document).ready(function(){
+  $('#sb1 div').scroll(function(){
+        var msg="broadcast:RCSetScroll?h=" + $('#sb1 div').scrollLeft();
+        console.log($('#sb1 div').scrollLeft());
+        console.log(msg);
+        ws.send(msg);
+  });
+  $('#container div').scroll(function(){
+        var msg="broadcast:RCSetChatScroll?h=" + $('#container div').scrollTop();
+        console.log($('#container div').scrollTop());
+        console.log(msg);
+        ws.send(msg);
+  });
+  $("#exampleInputEmail1").keyup(function(event){
+    if(event.keyCode == 13){
+       sendChat(); 
+    }
+  });
+  window.setInterval(function(){
+    //loadMsg();
+  }, delay);
+});
+// Function creates a window in Skreens TV
+// JSON string sent to web socket server port 8888
+// Edit URL, location and size of window to pop up
+function createWindow(url){
+        var w;
+        var h;
+        var x;  // MT need x coordinate
+        var y;  // MT need y coordinate
+        var id;
+        if (url.indexOf("/MLG/AppTV.html") > -1 ) {
+          w=920;
+          h=550;
+          x=100;
+          y=300;
+        }
+        else if (url.indexOf("/MLG/ChatTV.html") > -1 ) {
+          w = 500;
+          h = 1080-149;  // MT increase length of chat
+          x = 1920-500;
+          y = 0
+        }
+        else{
+          w = 1920;  // MT 1920 width 
+          h = 148;
+          x = 0;
+          y = 1080-148;
+        }
+        if (url.indexOf("/MLG/AppTicker.html") > -1 )
+          id = "AppTicker";
+        else
+          id = videochannel[0].id; //id of MLG channel
+          id = 1 //MT ID is ID of the app calling, in this case 1 is controller app (must be 1)
+        var windowProperties = {
+                                                windowId: 'window333'+w, // MT hack..must be a unique number
+                                                active: true,
+                                                fullScreen: false,
+                                                width: w,
+                                                height: h,
+                                                xPos: x,    // MT
+                                                yPos: y,    // MT
+                                                type: 'iFrame',
+                                                options: {
+                                                                iFrameSrc: "http://54.213.84.192:8080/site/Demo"+url, //MT must be a full URL
+                                                                iFrameName: 'window333'+w // MT hack..must be a unique number
+                                                }
+                                }
+         var msgObject = {
+                                                command: 'createWindow',
+                                                args:windowProperties,
+                        appId: id
+                  }
+          var socketString = 'broadcast:'+JSON.stringify(msgObject);
+          ws.send(socketString);
+          console.log(socketString);
+}
+// Function destroys a window in Skreens TV
+// JSON string sent to web socket server port 8888
+// WindowIndex is the number of the screen in the list..starting at 0, 1, 2, etc...
+// index number assigned at creation...this is supposed to be a number that is found by ID
+// API will improve later to make this better
+function destroyWindow(index){
+          // Delete window
+                  var msgObject = {
+                                command: 'destroyWindow',
+                                args: {
+                    windowIndex: index // this is a window ID that the system will need to make correct
+                },
+                appId:1  // MT must be 1 - videochannel[0].id //id of MLG channel
+                  }
+          var socketString = 'broadcast:'+JSON.stringify(msgObject);
+          ws.send(socketString);
+          console.log(socketString);
+}
+function toggleChat(){
+  if(document.getElementById("chatBtn").className == "video-pannel-button fa fa-comments"){
+    if (videochannel != ""){
+      if (local == false){
+        destroyWindow(2); //destroys Chat Window
+      }
+      else{
+        myChatWindow.close();     // MT removed
+      }
+      clearChat();
+    }
+    document.getElementById("container").style.opacity=0;
+    document.getElementById("chatBtn").className = "video-pannel-button fa fa-comments-o"
+  }
+  else{
+    document.getElementById("container").style.opacity=100;
+    if (videochannel != ""){
+      if (local == false){
+        createWindow(chatURL);
+      }
+      else{
+        myChatWindow = window.open(chatURL); // MT Removed
+      }
+    }
+    document.getElementById("chatBtn").className = "video-pannel-button fa fa-comments"
+  }
+  
+}
+function clearChat(){
+  msgArr=[];
+  arrPos = 0;
+  document.getElementById("mobileChatLabel").innerHTML = "&nbsp";
+  document.getElementById("messages").innerHTML = '<div class="message_box bold">Welcome to the chat.</div>';
+}
+ function loadMsgArr(name){
+    clearChat();
+    msgArr.push({name:'Voltagethegod',text:'your playlist is godlike',color:"blue"});
+    msgArr.push({name:name,text:'thx dude! Panteras so hard',color:"red"});
+    msgArr.push({name:'XPJacob',text:'BOOM! Headshot!',color:"green"});
+    msgArr.push({name:'AlmightyTroN',text:'wuddup homie',color:"purple"});
+    msgArr.push({name:'ChuckieBronson',text:'how u get up to the tower?',color:""});
+    msgArr.push({name:name,text:'theres a ladder round the corner from SE spawnpoint',color:"red"});
+    msgArr.push({name:'NateDaGREAT',text:'thats a sick sniping position',color:""});
+    msgArr.push({name:'zackamania',text:'yeah i got 20 kills from there last round',color:""});
+    msgArr.push({name:'XPJacob',text:'anyone use Slicer mod?',color:"green"});
+    msgArr.push({name:'NateDaGREAT',text:'Slicer always makes sweet stuff',color:""});
+    msgArr.push({name:'zackamania',text:'WATCH OUT, ' + name.toUpperCase() + ' ROCKETS INCOMING!!!',color:""});
+    msgArr.push({name:'ChuckieBronson',text:'sweet strafe, they jus missed u',color:""});
+    msgArr.push({name:name,text:'thx guys. PLEASE SUBSCRIBE!',color:"red"});
+    msgArr.push({name:'fr0ggyfr3$h',text:'yo yo fr0ggy in da hooouuuuuse',color:"#666"});
+    msgArr.push({name:'AlmightyTroN',text:'sup frogz, how u livin? great match today',color:"purple"});
+    msgArr.push({name:'fr0ggyfr3$h',text:'u2 my man',color:"#666"});
+    msgArr.push({name:'AlmightyTroN',text:'that gun is OP man! you can just camp for days!',color:"purple"});
+    msgArr.push({name:'zackamania',text:'cant beat the razorrifle tho',color:""});
+    msgArr.push({name:name,text:'alright, time to end this',color:"red"});
+    msgArr.push({name:'Voltagethegod',text:'BEASTMODE!',color:"blue"});
+    msgArr.push({name:'fr0ggyfr3$h',text: 'GG dude!',color:"#666"});
+  }
+function addMsg(){
+  if(msgArr.length > 0){
+    createDiv();
+  document.getElementById("msg_" + msgCount).innerHTML = "<b style=color:" + msgArr[arrPos].color + ";>" + msgArr[arrPos].name + ":</b> " + msgArr[arrPos].text;
+  if(arrPos < 20)
+    arrPos +=1;
+  else
+    arrPos = 0;
+  anchorChatBot();
+  }
+}
+function anchorChatBot(){
+  var height = document.getElementById('messages').scrollHeight;
+  $('#container div').scrollTop(height);
+}
+function createDiv(){
+  msgCount += 1;
+  var newDiv = document.createElement('div');
+  newDiv.id = "msg_" + msgCount;
+  newDiv.className = "message_box bold";
+  document.getElementById("messages").appendChild(newDiv);
+}
+function toggleLocal(){
+  local = !local;
+  init();
+}
+//********************************Ian's code, edited******************************************
+     function zoomIn() {
+      var fontSize = parseInt($(".info").css("font-size"));
+      var fontSizeChat = parseInt($("#messages").css("font-size"));
+      fontSize = fontSize + 2 + "px";
+      fontSizeChat = fontSizeChat + 2 + "px";
+      $(".info").css({'font-size':fontSize});
+      $("#messages").css({'font-size':fontSizeChat});
+      var msg="broadcast:RCZoomTicker?size=" + fontSize;
+      ws.send(msg);
+      var msg2="broadcast:RCZoomChat?size=" + fontSizeChat;
+      ws.send(msg2);
+     }
+     function zoomOut() {
+      var fontSize = parseInt($(".info").css("font-size"));
+      var fontSizeChat = parseInt($("#messages").css("font-size"));
+      fontSize = fontSize + -2 + "px";
+      fontSizeChat = fontSizeChat + -2 + "px";
+      var msg="broadcast:RCZoomTicker?size=" + fontSize;
+      ws.send(msg);
+      var msg2="broadcast:RCZoomChat?size=" + fontSizeChat;
+      ws.send(msg2);
+     }
+//*******************************************************************************************
+   </script>
+  </head>
+  <body onload="init()">
+    <div id="channel">
+        <div class="form-group" style="padding:0px 20px 0px 20px;">
+          <label class="chat-label" id="mobileChatLabel" for="exampleInputEmail1">&nbsp;</label>
+          <textarea type="email" class="form-control textarea-mobile" id="exampleInputEmail1" placeholder="Welcome to the chat group. Play nice!"></textarea>
+        </div>
+      <div id="video-sidebar channel-list-tv" class="video-sidebar channel-list-tv-ticker">  
+          <div id="text-controller-mobile" class=""> 
+            <div class="video-pannel-btn-mobile glyphicon glyphicon-font font-decrease" onclick="zoomOut()" id="chatBtn" style="width: 56px !important;">
+            </div> 
+            <div class="video-pannel-btn-mobile glyphicon glyphicon-font font-increase" onclick="zoomIn()" id="chatBtn" style="width: 56px !important;">
+            </div> 
+          </div>       
+        <div class="sidebar-content sidebar-addition-ticker-tv" id="sb1"> 
+          <div id="channels" style="overflow-y: hidden;">      
+          </div>
+        </div> 
+        <div id="video-controller-mobile" class=""> 
+            <div class="video-pannel-btn-mobile glyphicon glyphicon-play" id="chatBtn">
+            </div> 
+            <div class="video-pannel-btn-mobile glyphicon glyphicon-stop" onclick="closeApp()" id="chatBtn">
+            </div> 
+        </div>               
+      </div>
+    </div> 
+    <div id="container" style="height: 0px; width:0px;">
+      <div id="content" class="chat-style-light">
+        <div id="messages">
+          <div class="message_box bold">Welcome to the chat.</div>
+        </div>
+      </div>
+    </div>    
+  </body>
+</html>

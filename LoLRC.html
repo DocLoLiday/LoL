@@ -1,0 +1,392 @@
+  <!DOCTYPE html>
+  <html style="width:1024px;height:706px;">
+  <title>LoL Remote Control</title>
+
+  <head>
+   <script src="http://code.jquery.com/jquery-1.11.2.min.js" type="text/javascript"></script>
+   <script src="LoLTickerSource.js" type="text/javascript"></script>
+   <link rel="stylesheet" type="text/css" href="LoLStyle.css">
+   <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
+   
+   <!-- Optional theme -->
+   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap-theme.min.css">
+
+   <!-- Latest compiled and minified JavaScript -->
+   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script> 
+   <script type='text/javascript'> 
+//websocket
+var ws;
+//IP address for WebSocket. This will come from the device in production.
+var wsIP;
+//Video Base URL
+var videoURL;
+//Chat Base URL
+var mobaURL;
+//Ticker base URL
+var tickerURL;
+//keeps track of spawned video window *********TESTING, REMOVE FOR PRODUCTION***********
+var myVideoWindow;
+//keeps track of spawned chat window *********TESTING, REMOVE FOR PRODUCTION***********
+var myMobaWindow;
+//Determines wether working locally or in Skreens environment. Defaults to Skreens
+var local=false;
+//lets you know if ticker is open
+var LoLTickerReady=false;
+//lets you know if AppTV is open
+var LoLVideoTVReady=false;
+//lets you know if ChatTV is open
+var LoLMobaTVReady=false;
+//Timer to detect Idle Time
+var idleTime = 0;
+//Default scroll delay
+var scrollDelay=9999;
+//current champion element from .js file
+var currentID = -1;
+//Fires on load page
+function init() { 
+    wsIP = getParameterByName("socketID"); //54.213.84.122292:8888 
+    if (wsIP == "")
+      wsIP = "54.213.84.192:8888";
+    console.log("socket ID - " + wsIP); 
+    ws = new WebSocket("ws://" + wsIP + "/ws");
+    videoURL = "/LoL/LoLVideoTV.html?socketID=" + wsIP;  // MT added MLG directory
+    mobaURL = "/LoL/LoLMobaTV.html?socketID=" + wsIP;
+    tickerURL = "/LoL/LoLTicker.html?socketID=" + wsIP;
+
+    local = getParameterByName("local");
+    scrollDelay = getParameterByName("scrollDelay");
+    if (scrollDelay == "")
+      scrollDelay = 9999;
+
+    loadTicker();
+       ws.onopen = function() {
+           // ws.send("Hello, world");
+
+          //call to clear current layout***************
+         //  var windowProperties = {
+         //                            layoutId: "Blank"
+                                                
+         //                        }
+         // var msgObject = {
+         //                                        command: 'loadLayout',
+         //                                        args:windowProperties,
+         //                appId: 1
+         //          }
+         //  var socketString = 'broadcast:'+JSON.stringify(msgObject);
+         //  ws.send(socketString);
+         //  console.log(socketString);
+          //****************************************************
+          var msg="broadcast:PingTicker";
+          ws.send(msg);
+          setTimeout(function() {
+            if(LoLTickerReady == false){
+              if (local == false){
+                createWindow(tickerURL);
+              }
+              else{
+               window.open(tickerURL); // MT removed becasue too hard in Skreens Env
+              }            
+            }
+          }, 1500);
+       }
+       ws.onmessage = function (evt) {
+     // alert(evt.data);  // popup dialog
+        console.log("message: " + evt.data); 
+          if (evt.data.indexOf("VideoReady") > -1){
+            LoLVideoTVReady=true;
+            loadVideo(currentID);
+          }
+          if (evt.data.indexOf("ChatReady") > -1){
+            LoLMobaTVReady=true;
+            loadMoba(currentID);
+          }
+          if (evt.data.indexOf("TickerReady") > -1){
+            LoLTickerReady=true;
+          }
+          if (evt.data.indexOf("RCLoadMoba") > -1){
+            var datastring = evt.data;
+              var id = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+              var champ = $.grep(lolChampions, function(e){ return e.element == id; });
+              document.getElementById("mobaFrame").src = champ[0].mobaURL;
+              var myInterval = setInterval(addScrollListener, 2000);
+          }
+          if (evt.data.indexOf("RCSetChatScroll") > -1){
+            var datastring = evt.data;
+            var h = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+            $('#mobaFrame').contents().scrollTop(h);
+          }
+          if (evt.data.indexOf("RCSetMobaWidth") > -1){
+            var datastring = evt.data;
+            var w = datastring.slice(-(datastring.length - datastring.indexOf("=") - 1));
+            $('#mobaFrame').contents().scrollLeft(w);
+          }
+        }
+ }
+ function addScrollListener(){
+    // var myFrame = document.getElementById('mobaFrame').contentWindow;
+    // myFrame.onscroll = function(){ 
+    //   var msg="broadcast:RCSetChatScroll?h=" +  $('#mobaFrame').contents().scrollTop();
+    //   console.log($('#mobaFrame').contents().scrollTop());
+    //   console.log(msg);
+    //   ws.send(msg);
+    // }
+ }
+ function loadTicker(){
+    var out = "";
+    for(i = 0; i < lolChampions.length; i++) {
+    var div = document.createElement('div');
+    div.id = lolChampions[i].element;
+    div.onclick = function(){ launchApp(this.id) };
+    div.className = "channel channel-ticker";
+    div.innerHTML = '<img src="'+ lolChampions[i].image + '" style="padding-top:20px;">';
+    document.getElementById("channels").appendChild(div);
+    }
+ }
+function getParameterByName(name) {
+    name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+    var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+        results = regex.exec(location.search);
+    return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+function launchApp(id){
+  LoLVideoTVReady=false;
+  LoLMobaTVReady=false;
+  currentID = id;
+  var msg="broadcast:PingAppTV";
+  ws.send(msg);
+  var msg="broadcast:PingChatTV";
+  ws.send(msg);
+  setTimeout(function() {
+    if (local == false){
+      if(LoLVideoTVReady==false)
+        createWindow(videoURL);
+      if(LoLMobaTVReady==false)
+        createWindow(mobaURL);
+    }
+    else{
+      if(LoLVideoTVReady==false)
+        myVideoWindow = window.open(videoURL);   // MT removed
+      if(LoLMobaTVReady==false)
+        myChatWindow = window.open(mobaURL);     // MT removed
+    }  
+              
+          }, 1500);
+    
+    //loadVideo(id);
+    //loadMoba(id);
+}
+function loadVideo(id){
+  var msg="broadcast:RCLoadVideo?id=" + id;
+  ws.send(msg);
+}
+function loadMoba(id){
+  var msg2="broadcast:RCLoadMoba?id=" + id;
+  ws.send(msg2);
+}
+function closeApp(){
+  var msg="broadcast:RCCloseVideo";
+  if (local == false){
+    destroyWindow(1); //destroys Video Window
+    destroyWindow(2); //destroys Chat Window
+  }
+  else{
+    myVideoWindow.close();  // MT removed
+    myChatWindow.close();   // MT removed
+  }
+  videochannel = "";
+  clearChat();
+  ws.send(msg);
+}
+$(document).ready(function(){
+  $('#sb1 div').scroll(function(){
+        var msg="broadcast:RCSetScroll?h=" + $('#sb1 div').scrollLeft();
+        console.log($('#sb1 div').scrollLeft());
+        console.log(msg);
+        ws.send(msg);
+  });
+  $('#testScroll').scroll(function(){
+        var msg="broadcast:RCSetChatScroll?h=" + $('#testScroll').scrollTop();
+        console.log($('#testScroll').scrollTop());
+        console.log(msg);
+        ws.send(msg);
+  });
+  $('#testScroll-2').scroll(function(){
+        var msg="broadcast:RCSetMobaWidth?w=" + $('#testScroll-2').scrollLeft();
+        console.log($('#testScroll-2').scrollLeft());
+        console.log(msg);
+        ws.send(msg);
+  });
+  // $('#mobaFrame').contents().scroll(function(){
+  //       var msg="broadcast:RCSetChatScroll?h=" + $('#mobaFrame').contents().scrollTop();
+  //       console.log($('#mobaFrame').contents().scrollTop());
+  //       console.log(msg);
+  //       ws.send(msg);
+  // });
+  // var myFrame = document.getElementById('mobaFrame').contentWindow;
+  // myFrame.onscroll = function(){ 
+  //   var msg="broadcast:RCSetChatScroll?h=" +  $('#mobaFrame').contents().scrollTop();
+  //   console.log($('#mobaFrame').contents().scrollTop());
+  //   console.log(msg);
+  //   ws.send(msg);
+  // };
+  //ticks idle seconds if no mouse movement
+  var idleInterval = setInterval(countDown, 1000);
+  //Zero the idle timer on mouse movement.
+  $(this).mousemove(function (e) {
+    idleTime = 0;
+  });
+  $(this).keypress(function (e) {
+    idleTime = 0;
+  });
+});
+function countDown(){
+  idleTime += 1;
+  //document.getElementById("countdown").innerHTML = idleTime;
+  if (idleTime > 10){
+    if (idleTime % scrollDelay == 0){
+      scrollOnce(); 
+    }
+  }
+  
+}
+function scrollOnce(){
+  $("#channels").animate({ scrollLeft: $("#channels").scrollLeft() + 742 } );
+  // var channelLength = $("#channels > div").length;
+  // var groupLength = currentGroup.length - 1;
+  var scrollPos =$("#channels").scrollLeft();
+  var scrollW = document.getElementById("channels").scrollWidth;
+  if (scrollW - scrollPos < 1500){
+    loadTicker();
+  }
+}
+// Function creates a window in Skreens TV
+// JSON string sent to web socket server port 8888
+// Edit URL, location and size of window to pop up
+function createWindow(url){
+        var w;
+        var h;
+        var x;  // MT need x coordinate
+        var y;  // MT need y coordinate
+        var id;
+        if (url.indexOf("/LoL/LoLVideoTV.html") > -1 ) {
+          w=610;
+          h=373;
+          x=1310;
+          y=555;
+        }
+        else if (url.indexOf("/LoL/LoLMobaTV.html") > -1 ) {
+          w = 610;
+          h = 545;  // MT increase length of chat
+          x = 1310;
+          y = 0
+        }
+        else{
+          w = 1920;  // MT 1920 width 
+          h = 148;
+          x = 0;
+          y = 932;
+        }
+        // if (url.indexOf("/MLG/AppTicker.html") > -1 )
+        //   id = "AppTicker";
+        // else
+        //   // id = videochannel[0].id; //id of MLG channel
+        //   id = 1 //MT ID is ID of the app calling, in this case 1 is controller app (must be 1)
+        var randomnumber=Math.floor(Math.random()*1000)
+        var windowProperties = {
+                                                windowId: 'window333'+randomnumber, // MT hack..must be a unique number
+                                                active: true,
+                                                fullScreen: false,
+                                                width: w,
+                                                height: h,
+                                                xPos: x,    // MT
+                                                yPos: y,    // MT
+                                                type: 'iFrame',
+                                                options: {
+                                                                iFrameSrc: "http://54.213.84.192:8080/site/Demo"+url, //MT must be a full URL
+                                                                iFrameName: 'window333'+randomnumber // MT hack..must be a unique number
+                                                }
+                                }
+         var msgObject = {
+                                                command: 'createWindow',
+                                                args:windowProperties,
+                        appId: 1
+                  }
+          var socketString = 'broadcast:'+JSON.stringify(msgObject);
+          ws.send(socketString);
+          console.log(socketString);
+}
+// Function destroys a window in Skreens TV
+// JSON string sent to web socket server port 8888
+// WindowIndex is the number of the screen in the list..starting at 0, 1, 2, etc...
+// index number assigned at creation...this is supposed to be a number that is found by ID
+// API will improve later to make this better
+function destroyWindow(index){
+          // Delete window
+                  var msgObject = {
+                                command: 'destroyWindow',
+                                args: {
+                    windowIndex: index // this is a window ID that the system will need to make correct
+                },
+                appId:1  // MT must be 1 - videochannel[0].id //id of MLG channel
+                  }
+          var socketString = 'broadcast:'+JSON.stringify(msgObject);
+          ws.send(socketString);
+          console.log(socketString);
+}
+   
+   // ------------------------------------------------------------------------------
+   </script>
+  </head>
+  <body onload="init()">
+    <div id="video-panel">
+      <div id="countdown">10</div> 
+    </div>
+    <div id="container" style="height: 557px; width:550px;left:474px;position:absolute; border-bottom: 1px solid #252525;">
+      <div id="testScroll" class="style-1">
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+        Skreens, Skreens, Skreens, Skreens, Skreens, 
+      </div>
+      <div id="testScroll-2" class="style-2">
+        <div class="inner-scroll">
+          Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, Skreens, 
+        </div>
+      </div>      
+    <iframe id="mobaFrame" src="http://www.mobafire.com/">
+
+    </iframe>
+    </div>
+    <div id="channel">
+      <div id="video-sidebar channel-list-tv" class="video-sidebar channel-list-tv-ticker">
+        <div id="left-button" class="left-button-restriction glyphicon glyphicon-th">
+        </div>  
+        <div class="sidebar-content sidebar-addition-ticker" id="sb1"> 
+          <div id="channels" style="overflow-y: hidden;">      
+          </div>
+          <div id="icon-advertisment" class="">
+          </div>   
+        </div>
+               
+      </div>
+    </div>    
+  </body>
+</html>
